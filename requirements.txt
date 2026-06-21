@@ -10,6 +10,10 @@ rich>=13.7.0
 # Interactive CLI prompts (menus, checkboxes, password input)
 questionary>=2.0.1
 
+# Arabic text rendering in LTR terminals
+arabic-reshaper>=3.0.0
+python-bidi>=0.4.2
+
 # ─── Discord Bot (optional) ──────────────────────────────────────────────────
 # Required only for the Discord bot integration (coming soon)
 # Install separately: pip install discord.py aiohttp

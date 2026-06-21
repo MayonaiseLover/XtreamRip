@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -72,6 +73,21 @@ BANNER = """\
 """.format(version=__version__)
 
 CHECKBOX_HINT = "[dim]  SPACE = toggle selection   ENTER with nothing selected = grab ALL[/dim]"
+
+
+# ─── Arabic text fix ──────────────────────────────────────────────────────────
+
+def fix_arabic(text: str) -> str:
+    """Reshape and reorder Arabic text so it displays correctly in LTR terminals."""
+    if not text:
+        return text
+    try:
+        import arabic_reshaper
+        from bidi.algorithm import get_display
+        reshaped = arabic_reshaper.reshape(text)
+        return get_display(reshaped)
+    except ImportError:
+        return text
 
 
 # ─── Quality tiers ────────────────────────────────────────────────────────────
@@ -299,8 +315,8 @@ def test_connection(creds: dict) -> tuple[bool, dict]:
     except Exception:
         return False, {}
 
-def show_account(data: dict) -> int:
-    """Render account info panel. Returns max_connections."""
+def show_account(data: dict) -> None:
+    """Render account info panel."""
     ui  = data.get("user_info", {})
     si  = data.get("server_info", {})
 
@@ -327,8 +343,6 @@ def show_account(data: dict) -> int:
 
     console.print(Panel(t, title="[bold cyan]Account[/]", border_style="cyan", expand=False))
     console.print()
-
-    return int(ui.get("max_connections", 1))
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -373,12 +387,12 @@ def send_notification(title: str, body: str) -> None:
 
 def show_series_panel(info: dict, name: str) -> None:
     meta  = info.get("info", {})
-    plot  = (meta.get("plot") or meta.get("description") or "No description available.")[:240]
+    plot  = fix_arabic((meta.get("plot") or meta.get("description") or "No description available.")[:240])
     parts = []
     rating = meta.get("rating") or meta.get("rating_5based")
     year   = meta.get("releaseDate") or meta.get("year")
-    genre  = meta.get("genre")
-    cast   = meta.get("cast")
+    genre  = fix_arabic(meta.get("genre") or "")
+    cast   = fix_arabic(meta.get("cast") or "")
 
     if rating or year or genre:
         row = "  ".join(filter(None, [
@@ -396,7 +410,7 @@ def show_series_panel(info: dict, name: str) -> None:
 
     console.print(Panel(
         "\n".join(parts),
-        title=f"[bold cyan]{name}[/]",
+        title=f"[bold cyan]{fix_arabic(name)}[/]",
         border_style="cyan",
         expand=False,
     ))
@@ -471,6 +485,22 @@ def _download_plain(url: str, dest: Path,
     return dest.stat().st_size / 1_048_576
 
 
+def zip_season(files: list[Path], zip_dest: Path) -> float:
+    """Zip a list of files into zip_dest. Returns zip size in MB."""
+    zip_dest.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_dest, 'w', zipfile.ZIP_STORED) as zf:
+        for f in files:
+            zf.write(f, f.name)
+            f.unlink()
+    # clean up empty parent dirs left behind
+    for f in files:
+        try:
+            f.parent.rmdir()
+        except OSError:
+            pass
+    return zip_dest.stat().st_size / 1_048_576
+
+
 def run_download_queue(
     queue:       list[tuple[str, Path, str]],
     enc_args:    list[str] | None,
@@ -478,21 +508,17 @@ def run_download_queue(
     cfg:         dict,
     history:     dict,
     category:    str,
-    max_connections: int = 1,
 ) -> tuple[int, float]:
     """
     Download / transcode every item in `queue` with live progress bars.
 
-    - Respects the server's max_connections limit.
+    - Uses cfg['workers'] for concurrency.
     - Skips items already on disk when skip_existing is True.
     - Returns (completed_count, total_mb_written).
     """
     ffmpeg_ok  = has_ffmpeg() and enc_args is not None
     is_copy    = enc_args == ["-c:v", "copy", "-c:a", "copy"] if enc_args else False
-    workers    = min(cfg["workers"], max_connections) if (ffmpeg_ok or is_copy) else 1
-
-    if max_connections <= 1 and cfg["workers"] > 1:
-        console.print("[yellow]  ⚠ Server allows 1 connection — downloading sequentially to avoid errors.[/]\n")
+    workers    = cfg["workers"] if (ffmpeg_ok or is_copy) else 1
 
     lock    = threading.Lock()
     done    = 0
@@ -561,7 +587,7 @@ def run_download_queue(
 
 # ─── Series flow ──────────────────────────────────────────────────────────────
 
-def run_series(creds: dict, has_hw: bool, cfg: dict, history: dict, max_conn: int) -> None:
+def run_series(creds: dict, has_hw: bool, cfg: dict, history: dict) -> None:
     # ── find series ──
     mode = questionary.select(
         "Find by:",
@@ -585,7 +611,7 @@ def run_series(creds: dict, has_hw: bool, cfg: dict, history: dict, max_conn: in
             cats = api_call(creds, "get_series_categories")
         cat_id = questionary.select(
             "Pick a category:",
-            choices=[{"name": c["category_name"], "value": c["category_id"]} for c in cats],
+            choices=[{"name": fix_arabic(c["category_name"]), "value": c["category_id"]} for c in cats],
             style=STYLE,
         ).ask()
         if not cat_id:
@@ -610,19 +636,19 @@ def run_series(creds: dict, has_hw: bool, cfg: dict, history: dict, max_conn: in
     t.add_column("⭐",     width=5)
     t.add_column("Seasons", width=8)
     for i, s in enumerate(results[:60], 1):
-        t.add_row(str(i), s.get("name", "—"), str(s.get("rating", "—")), str(s.get("num_seasons", "?")))
+        t.add_row(str(i), fix_arabic(s.get("name", "—")), str(s.get("rating", "—")), str(s.get("num_seasons", "?")))
     console.print(t)
 
     chosen = questionary.select(
         "Pick a series:",
-        choices=[{"name": s["name"], "value": s} for s in results[:60]],
+        choices=[{"name": fix_arabic(s["name"]), "value": s} for s in results[:60]],
         style=STYLE,
     ).ask()
     if not chosen:
         return
 
     # ── load episode data ──
-    with console.status(f"[cyan]Loading {chosen['name']}…[/]"):
+    with console.status(f"[cyan]Loading {fix_arabic(chosen['name'])}…[/]"):
         try:
             info = api_call(creds, "get_series_info", series_id=chosen["series_id"])
         except Exception as e:
@@ -658,7 +684,7 @@ def run_series(creds: dict, has_hw: bool, cfg: dict, history: dict, max_conn: in
             {
                 "name": (
                     f"  S{int(season):02d}E{int(e.get('episode_num', 0)):02d}"
-                    f"  {e.get('title', 'Episode ' + str(e.get('episode_num', '?')))}"
+                    f"  {fix_arabic(e.get('title', 'Episode ' + str(e.get('episode_num', '?'))))}"
                 ),
                 "value": e,
             }
@@ -688,14 +714,41 @@ def run_series(creds: dict, has_hw: bool, cfg: dict, history: dict, max_conn: in
     if not queue:
         console.print("[yellow]  Nothing queued.[/]\n"); return
 
+    # ── ZIP option ──
+    do_zip = questionary.confirm(
+        "📦  Package into a single ZIP when done?",
+        default=False, style=STYLE,
+    ).ask()
+
     # ── quality + start ──
     console.print(f"\n[bold]⬇  {len(queue)} episode(s)  →  {series_dir}[/]")
     enc_args, enc_label = pick_quality(has_hw, cfg["crf"])
     console.print(f"[dim]   encoder : {enc_label}[/]")
-    console.print(f"[dim]   workers : {min(cfg['workers'], max_conn)}[/]\n")
+    console.print(f"[dim]   workers : {cfg['workers']}[/]\n")
 
     t0 = time.time()
-    done, mb = run_download_queue(queue, enc_args, enc_label, cfg, history, "series", max_conn)
+    done, mb = run_download_queue(queue, enc_args, enc_label, cfg, history, "series")
+
+    # ── optional ZIP packaging ──
+    if do_zip and done > 0:
+        # collect all files that were actually downloaded
+        downloaded_files = [dest for _, dest, _ in queue if dest.exists()]
+        if downloaded_files:
+            # group by season dir for per-season ZIPs
+            season_groups: dict[Path, list[Path]] = {}
+            for f in downloaded_files:
+                season_groups.setdefault(f.parent, []).append(f)
+
+            zip_mb = 0.0
+            for season_dir_path, files in season_groups.items():
+                zip_name = f"{sanitize(chosen['name'])} {season_dir_path.name}.zip"
+                zip_dest = series_dir / zip_name
+                console.print(f"[cyan]  📦 Zipping {len(files)} files → {zip_name}[/]")
+                zip_mb += zip_season(files, zip_dest)
+
+            mb = zip_mb
+            console.print(f"[green]  ✓ Zipped to {mb:.0f} MB total[/]\n")
+
     _print_summary(done, len(queue), mb, int(time.time() - t0), series_dir)
     if cfg["notify"]:
         send_notification("XtreamRip", f"{chosen['name']} — {done} episodes done ({mb:.0f} MB)")
@@ -703,7 +756,7 @@ def run_series(creds: dict, has_hw: bool, cfg: dict, history: dict, max_conn: in
 
 # ─── Movie flow ───────────────────────────────────────────────────────────────
 
-def run_movies(creds: dict, has_hw: bool, cfg: dict, history: dict, max_conn: int) -> None:
+def run_movies(creds: dict, has_hw: bool, cfg: dict, history: dict) -> None:
     mode = questionary.select(
         "Find by:",
         choices=[
@@ -726,7 +779,7 @@ def run_movies(creds: dict, has_hw: bool, cfg: dict, history: dict, max_conn: in
             cats = api_call(creds, "get_vod_categories")
         cat_id = questionary.select(
             "Pick a category:",
-            choices=[{"name": c["category_name"], "value": c["category_id"]} for c in cats],
+            choices=[{"name": fix_arabic(c["category_name"]), "value": c["category_id"]} for c in cats],
             style=STYLE,
         ).ask()
         if not cat_id:
@@ -750,14 +803,14 @@ def run_movies(creds: dict, has_hw: bool, cfg: dict, history: dict, max_conn: in
     t.add_column("Year",   width=6)
     t.add_column("⭐",    width=5)
     for i, m in enumerate(results[:60], 1):
-        t.add_row(str(i), m.get("name", "—"), str(m.get("year", "—")), str(m.get("rating", "—")))
+        t.add_row(str(i), fix_arabic(m.get("name", "—")), str(m.get("year", "—")), str(m.get("rating", "—")))
     console.print(t)
 
     console.print(CHECKBOX_HINT)
     chosen = questionary.checkbox(
         "Which movies?",
         choices=[
-            {"name": f"{m.get('name', '—')}  ({m.get('year', '—')})", "value": m}
+            {"name": f"{fix_arabic(m.get('name', '—'))}  ({m.get('year', '—')})", "value": m}
             for m in results[:60]
         ],
         style=STYLE,
@@ -786,7 +839,7 @@ def run_movies(creds: dict, has_hw: bool, cfg: dict, history: dict, max_conn: in
     console.print(f"[dim]   encoder : {enc_label}[/]\n")
 
     t0 = time.time()
-    done, mb = run_download_queue(queue, enc_args, enc_label, cfg, history, "movies", max_conn)
+    done, mb = run_download_queue(queue, enc_args, enc_label, cfg, history, "movies")
     _print_summary(done, len(queue), mb, int(time.time() - t0), dl_dir)
     if cfg["notify"]:
         send_notification("XtreamRip", f"{done} movie(s) done ({mb:.0f} MB)")
@@ -859,7 +912,7 @@ def main() -> None:
             sys.exit(1)
     else:
         console.print(f"[green]✓  Connected →[/] [bold]{creds['server']}[/]\n")
-        max_conn = show_account(acct_data)
+        show_account(acct_data)
 
     # ── main menu ──
     MENU = [
@@ -882,9 +935,9 @@ def main() -> None:
             console.print("[cyan]Bye! 👋[/]")
             break
         elif action == "series":
-            run_series(creds, hw, cfg, history, max_conn)
+            run_series(creds, hw, cfg, history)
         elif action == "movies":
-            run_movies(creds, hw, cfg, history, max_conn)
+            run_movies(creds, hw, cfg, history)
         elif action == "library":
             show_library(history)
         elif action == "settings":
@@ -895,7 +948,7 @@ def main() -> None:
             with console.status("[cyan]Re-testing connection…[/]"):
                 ok, acct_data = test_connection(creds)
             if ok:
-                max_conn = show_account(acct_data)
+                show_account(acct_data)
             else:
                 console.print("[red]  ✗ Authentication failed.[/]\n")
 
