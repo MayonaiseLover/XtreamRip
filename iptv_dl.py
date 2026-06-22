@@ -520,7 +520,7 @@ def run_download_queue(
     """
     Download / transcode every item in `queue` with live progress bars.
 
-    - Uses cfg['workers'] for concurrency.
+    - Always sequential (1 at a time) — IPTV servers reject parallel connections.
     - Skips items already on disk when skip_existing is True.
     - Returns (completed_count, total_mb_written).
     """
@@ -735,7 +735,8 @@ def run_series(creds: dict, has_hw: bool, cfg: dict, history: dict) -> None:
     console.print(f"\n[bold]⬇  {len(queue)} episode(s)  →  {series_dir}[/]")
     enc_args, enc_label = pick_quality(has_hw, cfg["crf"])
     console.print(f"[dim]   encoder : {enc_label}[/]")
-    console.print(f"[dim]   workers : {cfg['workers']}[/]\n")
+    console.print(f"[dim]   mode    : sequential (1 at a time)[/]\n")
+
 
     t0 = time.time()
     done, mb = run_download_queue(queue, enc_args, enc_label, cfg, history, "series")
