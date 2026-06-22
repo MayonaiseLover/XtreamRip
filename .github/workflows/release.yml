@@ -38,7 +38,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: ./gui
-          tagName: app-v__VERSION__
+          tagName: v__VERSION__
           releaseName: 'XtreamRip GUI v__VERSION__'
           releaseBody: 'Download the XtreamRip Windows GUI installer below.'
           releaseDraft: false
