@@ -1,22 +1,13 @@
-# ─── XtreamRip ────────────────────────────────────────────────────────────────
-# Core dependencies — install with: pip install -r requirements.txt
-
-# HTTP requests (API calls + stream downloads)
-requests>=2.31.0
-
-# Beautiful terminal output, panels, tables, and progress bars
-rich>=13.7.0
-
-# Interactive CLI prompts (menus, checkboxes, password input)
-questionary>=2.0.1
-
-# Arabic text rendering in LTR terminals
-arabic-reshaper>=3.0.0
-python-bidi>=0.4.2
-
-# ─── Discord Bot (optional) ──────────────────────────────────────────────────
-# Required only for the Discord bot integration (coming soon)
-# Install separately: pip install discord.py aiohttp
-
-# discord.py>=2.3.0
-# aiohttp>=3.9.0
+altgraph==0.17.5
+certifi==2026.6.17
+charset-normalizer==3.4.7
+customtkinter==5.2.2
+darkdetect==0.8.0
+idna==3.18
+packaging==26.2
+pillow==12.2.0
+pyinstaller==6.21.0
+pyinstaller-hooks-contrib==2026.6
+requests==2.34.2
+setuptools==82.0.1
+urllib3==2.7.0

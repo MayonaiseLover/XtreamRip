@@ -21,8 +21,9 @@ XtreamRip is now available as a standalone, native Desktop Application for Windo
 
 - **No CORS issues, no Cloudflare blocks.** Connects directly from your PC.
 - **Dynamic Login:** Just enter your provider's Server URL, your username, and your password.
-- **Browse & Search:** Beautiful UI to browse categories or search for specific titles.
-- **Built-in Player:** Watch directly inside the app.
+- **Browse & Search:** Beautiful UI to browse categories and find your content.
+- **Full Season Downloads:** Queue up entire TV seasons with a single click.
+- **Download Manager:** Track the progress of multiple simultaneous downloads.
 - **One-Click Downloads:** Download movies, episodes, or entire seasons to your computer.
 
 ### 👉 [Download the Windows .exe Installer Here](https://github.com/MayonaiseLover/XtreamRip/releases/latest)

@@ -19,27 +19,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: setup node
-        uses: actions/setup-node@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          node-version: 20
+          python-version: '3.12'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install customtkinter requests Pillow pyinstaller
 
-      - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Build Executable
+        run: |
+          pyinstaller --onefile --noconsole --name XtreamRip_GUI xtreamrip_gui.py
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: install frontend dependencies
-        run: npm install
-        working-directory: ./gui
-
-      - uses: tauri-apps/tauri-action@v0
+          files: dist/XtreamRip_GUI.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: ./gui
-          tagName: app-v__VERSION__
-          releaseName: 'XtreamRip GUI v__VERSION__'
-          releaseBody: 'Download the XtreamRip Windows GUI installer below.'
-          releaseDraft: false
-          prerelease: false
