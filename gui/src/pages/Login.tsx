@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Zap, Globe, User, Lock, Eye, EyeOff } from 'lucide-react';
-import { saveCreds, fetchXtream, clearCreds } from '../api/xtream';
+import { saveCreds, fetchXtream, clearCreds, getCreds } from '../api/xtream';
 
 export default function Login() {
   const [url, setUrl] = useState('');
@@ -11,6 +11,15 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+
+  useEffect(() => {
+    try {
+      const creds = getCreds();
+      setUrl(creds.baseUrl);
+      setUsername(creds.username);
+      setPassword(creds.password);
+    } catch (err) {}
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

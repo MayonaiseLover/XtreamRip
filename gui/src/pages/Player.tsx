@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { fetchXtream, getStreamUrl, getCreds } from '../api/xtream';
-import { ArrowLeft, Loader2, Download, FolderDown } from 'lucide-react';
+import { ArrowLeft, Loader2, Download } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { save } from '@tauri-apps/plugin-dialog';
 
 export default function Player() {
   const { type, id } = useParams();
@@ -14,6 +16,7 @@ export default function Player() {
   const [activeUrl, setActiveUrl] = useState('');
   const [activeTitle, setActiveTitle] = useState('');
   const [activeEp, setActiveEp] = useState<any>(null);
+  const [downloading, setDownloading] = useState<Record<string, boolean>>({});
 
   const item = state?.item;
 
@@ -54,27 +57,23 @@ export default function Player() {
     setActiveEp(ep);
   };
 
-  const downloadFile = (url: string, filename: string) => {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const downloadFile = async (url: string, defaultFilename: string, id: string) => {
+    if (downloading[id]) return;
+    try {
+      const path = await save({ defaultPath: defaultFilename });
+      if (!path) return; // User canceled
+
+      setDownloading(prev => ({ ...prev, [id]: true }));
+      await invoke('download_file', { url, path });
+      setDownloading(prev => ({ ...prev, [id]: false }));
+      alert(`Download complete: ${defaultFilename}`);
+    } catch (err: any) {
+      alert(`Download failed: ${err}`);
+      setDownloading(prev => ({ ...prev, [id]: false }));
+    }
   };
 
-  const downloadSeason = () => {
-    const seasonEps = episodes.filter(e => Number(e.season) === activeSeason);
-    seasonEps.forEach((ep, i) => {
-      setTimeout(() => {
-        const ext = ep.container_extension || 'mp4';
-        downloadFile(
-          getStreamUrl('series', ep.id, ext),
-          `${item?.name || 'Series'} S${String(ep.season).padStart(2, '0')}E${String(ep.episode_num).padStart(2, '0')}.${ext}`
-        );
-      }, i * 800);
-    });
-  };
+
 
   const seasonEps = episodes.filter(e => Number(e.season) === activeSeason);
 
@@ -95,25 +94,29 @@ export default function Player() {
         <div className="flex gap-2">
           {type === 'movie' ? (
             <button
-              onClick={() => downloadFile(activeUrl, `${item?.name || 'movie'}.${item?.container_extension || 'mp4'}`)}
-              className="flex items-center gap-2 px-3 py-2 bg-[#00f3ff]/10 text-[#00f3ff] border border-[#00f3ff]/30 hover:bg-[#00f3ff]/20 rounded-lg font-mono text-xs uppercase tracking-wider transition-colors"
+              onClick={() => downloadFile(activeUrl, `${item?.name || 'movie'}.${item?.container_extension || 'mp4'}`, 'movie')}
+              disabled={downloading['movie']}
+              className="flex items-center gap-2 px-3 py-2 bg-[#00f3ff]/10 text-[#00f3ff] border border-[#00f3ff]/30 hover:bg-[#00f3ff]/20 rounded-lg font-mono text-xs uppercase tracking-wider transition-colors disabled:opacity-50"
             >
-              <Download size={14} /> Download
+              {downloading['movie'] ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} 
+              {downloading['movie'] ? 'Downloading' : 'Download'}
             </button>
           ) : (
             <>
               <button
-                onClick={() => activeEp && downloadFile(activeUrl, `${item?.name} S${String(activeEp.season).padStart(2,'0')}E${String(activeEp.episode_num).padStart(2,'0')}.${activeEp.container_extension || 'mp4'}`)}
-                className="flex items-center gap-2 px-3 py-2 bg-[#00f3ff]/10 text-[#00f3ff] border border-[#00f3ff]/30 hover:bg-[#00f3ff]/20 rounded-lg font-mono text-xs uppercase tracking-wider transition-colors"
+                onClick={() => activeEp && downloadFile(activeUrl, `${item?.name} S${String(activeEp.season).padStart(2,'0')}E${String(activeEp.episode_num).padStart(2,'0')}.${activeEp.container_extension || 'mp4'}`, activeEp.id)}
+                disabled={!activeEp || downloading[activeEp.id]}
+                className="flex items-center gap-2 px-3 py-2 bg-[#00f3ff]/10 text-[#00f3ff] border border-[#00f3ff]/30 hover:bg-[#00f3ff]/20 rounded-lg font-mono text-xs uppercase tracking-wider transition-colors disabled:opacity-50"
               >
-                <Download size={14} /> Episode
+                {activeEp && downloading[activeEp.id] ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} 
+                {activeEp && downloading[activeEp.id] ? 'Downloading' : 'Episode'}
               </button>
-              <button
+              {/* <button
                 onClick={downloadSeason}
                 className="flex items-center gap-2 px-3 py-2 bg-[#bc13fe]/10 text-[#bc13fe] border border-[#bc13fe]/30 hover:bg-[#bc13fe]/20 rounded-lg font-mono text-xs uppercase tracking-wider transition-colors"
               >
                 <FolderDown size={14} /> Season {activeSeason}
-              </button>
+              </button> */}
             </>
           )}
         </div>
