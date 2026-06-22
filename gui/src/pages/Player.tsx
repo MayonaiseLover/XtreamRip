@@ -1,27 +1,29 @@
 import { useEffect, useState } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { fetchXtream, getStreamUrl, getCreds } from '../api/xtream';
-import { ArrowLeft, Loader2, Download } from 'lucide-react';
+import { ArrowLeft, Loader2, Download, FolderDown, Info } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { save } from '@tauri-apps/plugin-dialog';
 
 export default function Player() {
   const { type, id } = useParams();
   const { state } = useLocation();
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(type === 'series');
+  const [, setLoading] = useState(type === 'series');
   const [episodes, setEpisodes] = useState<any[]>([]);
   const [seasons, setSeasons] = useState<number[]>([]);
   const [activeSeason, setActiveSeason] = useState<number>(1);
   const [activeUrl, setActiveUrl] = useState('');
-  const [activeTitle, setActiveTitle] = useState('');
+  const [, setActiveTitle] = useState('');
   const [activeEp, setActiveEp] = useState<any>(null);
   const [downloading, setDownloading] = useState<Record<string, boolean>>({});
+  const [appSettings, setAppSettings] = useState<any>(null);
 
   const item = state?.item;
 
   useEffect(() => {
     try { getCreds(); } catch { navigate('/'); return; }
+    
+    invoke('get_settings').then((s: any) => setAppSettings(s)).catch(console.error);
 
     if (type === 'movie') {
       setActiveUrl(getStreamUrl('movie', id as string, item?.container_extension || 'mp4'));
@@ -57,94 +59,158 @@ export default function Player() {
     setActiveEp(ep);
   };
 
-  const downloadFile = async (url: string, defaultFilename: string, id: string) => {
-    if (downloading[id]) return;
-    try {
-      const path = await save({ defaultPath: defaultFilename });
-      if (!path) return; // User canceled
+  const sanitizeFilename = (name: string) => {
+    return name.replace(/[\\/:*?"<>|]/g, '-').trim();
+  };
 
-      setDownloading(prev => ({ ...prev, [id]: true }));
-      await invoke('download_file', { url, path });
-      setDownloading(prev => ({ ...prev, [id]: false }));
-      alert(`Download complete: ${defaultFilename}`);
-    } catch (err: any) {
-      alert(`Download failed: ${err}`);
-      setDownloading(prev => ({ ...prev, [id]: false }));
+  const getDestPath = (ep: any | null = null) => {
+    const baseDir = appSettings?.download_dir || '';
+    if (type === 'movie') {
+      const movieName = sanitizeFilename(item?.name || 'Unknown Movie');
+      const ext = item?.container_extension || 'mp4';
+      return `${baseDir}\\movies\\${movieName}\\${movieName}.${ext}`;
+    } else {
+      const seriesName = sanitizeFilename(item?.name || 'Unknown Series');
+      const ext = ep?.container_extension || 'mp4';
+      const seasonNum = Number(ep?.season);
+      const epNum = Number(ep?.episode_num);
+      const epTitle = sanitizeFilename(ep?.title || `Episode ${epNum}`);
+      const filename = `S${String(seasonNum).padStart(2,'0')}E${String(epNum).padStart(2,'0')} - ${epTitle}.${ext}`;
+      
+      if (seasons.length > 1) {
+        return `${baseDir}\\series\\${seriesName}\\Season ${seasonNum}\\${filename}`;
+      } else {
+        return `${baseDir}\\series\\${seriesName}\\${filename}`;
+      }
     }
   };
 
+  const downloadItem = async (url: string, path: string, displayName: string, trackId: string) => {
+    if (downloading[trackId]) return;
+    setDownloading(prev => ({ ...prev, [trackId]: true }));
+    try {
+      await invoke('add_to_queue', { url, dest: path, name: displayName });
+    } catch (err: any) {
+      alert(`Failed to add to queue: ${err}`);
+    }
+    // We keep the "Downloading" state true for UI feedback, the Downloads tab handles the rest
+  };
 
+  const downloadActiveMovie = () => {
+    const path = getDestPath();
+    downloadItem(activeUrl, path, item?.name || 'Movie', 'movie');
+  };
+
+  const downloadActiveEpisode = () => {
+    if (!activeEp) return;
+    const path = getDestPath(activeEp);
+    downloadItem(activeUrl, path, `${item?.name} S${activeEp.season}E${activeEp.episode_num}`, activeEp.id);
+  };
+
+  const downloadSeason = () => {
+    const eps = episodes.filter(e => Number(e.season) === activeSeason);
+    eps.forEach(ep => {
+      const url = getStreamUrl('series', ep.id, ep.container_extension || 'mp4');
+      const path = getDestPath(ep);
+      downloadItem(url, path, `${item?.name} S${ep.season}E${ep.episode_num}`, ep.id);
+    });
+  };
 
   const seasonEps = episodes.filter(e => Number(e.season) === activeSeason);
 
   return (
     <div className="min-h-screen bg-black flex flex-col">
-      {/* Header */}
       <header className="glass px-4 py-3 flex items-center justify-between z-10 border-b border-white/5">
         <div className="flex items-center gap-4">
           <button onClick={() => navigate(-1)} className="p-2 hover:bg-white/10 rounded-full transition-colors text-white">
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-base font-bold leading-tight" dir="auto">{item?.name || 'Video Player'}</h1>
-            <p className="text-xs text-[#00f3ff] font-mono opacity-80">{activeTitle}</p>
+            <h1 className="text-base font-bold leading-tight" dir="auto">{item?.name || 'Media Info'}</h1>
+            <p className="text-xs text-[#00f3ff] font-mono opacity-80">{type === 'series' ? 'Series' : 'Movie'}</p>
           </div>
         </div>
 
         <div className="flex gap-2">
           {type === 'movie' ? (
             <button
-              onClick={() => downloadFile(activeUrl, `${item?.name || 'movie'}.${item?.container_extension || 'mp4'}`, 'movie')}
+              onClick={downloadActiveMovie}
               disabled={downloading['movie']}
               className="flex items-center gap-2 px-3 py-2 bg-[#00f3ff]/10 text-[#00f3ff] border border-[#00f3ff]/30 hover:bg-[#00f3ff]/20 rounded-lg font-mono text-xs uppercase tracking-wider transition-colors disabled:opacity-50"
             >
               {downloading['movie'] ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} 
-              {downloading['movie'] ? 'Downloading' : 'Download'}
+              {downloading['movie'] ? 'Queued' : 'Download Movie'}
             </button>
           ) : (
             <>
               <button
-                onClick={() => activeEp && downloadFile(activeUrl, `${item?.name} S${String(activeEp.season).padStart(2,'0')}E${String(activeEp.episode_num).padStart(2,'0')}.${activeEp.container_extension || 'mp4'}`, activeEp.id)}
+                onClick={downloadActiveEpisode}
                 disabled={!activeEp || downloading[activeEp.id]}
                 className="flex items-center gap-2 px-3 py-2 bg-[#00f3ff]/10 text-[#00f3ff] border border-[#00f3ff]/30 hover:bg-[#00f3ff]/20 rounded-lg font-mono text-xs uppercase tracking-wider transition-colors disabled:opacity-50"
               >
                 {activeEp && downloading[activeEp.id] ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} 
-                {activeEp && downloading[activeEp.id] ? 'Downloading' : 'Episode'}
+                {activeEp && downloading[activeEp.id] ? 'Queued' : 'Download Ep'}
               </button>
-              {/* <button
+              <button
                 onClick={downloadSeason}
                 className="flex items-center gap-2 px-3 py-2 bg-[#bc13fe]/10 text-[#bc13fe] border border-[#bc13fe]/30 hover:bg-[#bc13fe]/20 rounded-lg font-mono text-xs uppercase tracking-wider transition-colors"
               >
-                <FolderDown size={14} /> Season {activeSeason}
-              </button> */}
+                <FolderDown size={14} /> Download S{activeSeason}
+              </button>
             </>
           )}
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden" style={{ height: 'calc(100vh - 56px)' }}>
-        {/* Video */}
-        <main className="flex-1 bg-black flex items-center justify-center">
-          {loading ? (
-            <Loader2 className="w-12 h-12 text-[#00f3ff] animate-spin" />
-          ) : activeUrl ? (
-            <video
-              key={activeUrl}
-              src={activeUrl}
-              controls
-              autoPlay
-              className="w-full h-full object-contain"
-            >
-              Your browser does not support the video tag.
-            </video>
-          ) : (
-            <p className="text-gray-500 font-mono">No video source.</p>
-          )}
+        {/* Info Panel instead of Video Player */}
+        <main className="flex-1 bg-black flex flex-col items-center justify-center p-8 relative">
+          <div className="absolute inset-0 opacity-20 pointer-events-none" style={{
+            backgroundImage: `url(${item?.stream_icon || item?.cover || ''})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            filter: 'blur(40px)'
+          }} />
+          
+          <div className="z-10 flex flex-col items-center max-w-2xl text-center">
+            {item?.stream_icon || item?.cover ? (
+              <img 
+                src={item.stream_icon || item.cover} 
+                className="w-64 rounded-xl shadow-2xl mb-8 border border-white/10"
+                alt="Poster" 
+              />
+            ) : (
+              <div className="w-64 h-96 bg-[#111] rounded-xl flex items-center justify-center mb-8 border border-white/5">
+                <Info size={48} className="text-white/20" />
+              </div>
+            )}
+            
+            <h2 className="text-3xl font-bold text-white mb-2">{item?.name}</h2>
+            
+            {type === 'movie' && (
+              <div className="flex gap-4 text-sm font-mono text-gray-400 mt-2">
+                <span>Rating: {item?.rating || 'N/A'}</span>
+                <span>Year: {item?.year || 'N/A'}</span>
+              </div>
+            )}
+            
+            {type === 'series' && activeEp && (
+              <div className="mt-6 p-6 bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 text-left w-full">
+                <h3 className="text-lg font-bold text-[#00f3ff] mb-1">
+                  Season {activeEp.season} Episode {activeEp.episode_num}
+                </h3>
+                <h4 className="text-xl text-white mb-2">{activeEp.title || `Episode ${activeEp.episode_num}`}</h4>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                  {activeEp.info?.plot || activeEp.info?.description || "No episode description available."}
+                </p>
+              </div>
+            )}
+          </div>
         </main>
 
         {/* Episodes panel */}
         {type === 'series' && episodes.length > 0 && (
-          <aside className="w-80 glass border-l border-white/5 flex flex-col overflow-hidden">
+          <aside className="w-96 glass border-l border-white/5 flex flex-col overflow-hidden">
             {/* Season tabs */}
             {seasons.length > 1 && (
               <div className="flex gap-1 p-3 border-b border-white/5 flex-wrap">
@@ -169,16 +235,16 @@ export default function Player() {
                 Season {activeSeason} — {seasonEps.length} episodes
               </h3>
               {seasonEps.map(ep => {
-                const isPlaying = activeEp?.id === ep.id;
+                const isSelected = activeEp?.id === ep.id;
                 return (
-                  <button
+                  <div
                     key={ep.id}
-                    onClick={() => selectEpisode(ep)}
-                    className={`w-full text-left p-3 rounded-xl flex gap-3 transition-colors ${
-                      isPlaying
+                    className={`w-full text-left p-3 rounded-xl flex gap-3 transition-colors cursor-pointer ${
+                      isSelected
                         ? 'bg-[#00f3ff]/15 border border-[#00f3ff]/40'
                         : 'bg-[#111] hover:bg-[#1a1a1a] border border-white/5'
                     }`}
+                    onClick={() => selectEpisode(ep)}
                   >
                     <img
                       src={ep.info?.movie_image || item?.cover || item?.stream_icon || ''}
@@ -192,7 +258,7 @@ export default function Player() {
                         {ep.title || `Episode ${ep.episode_num}`}
                       </h4>
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>

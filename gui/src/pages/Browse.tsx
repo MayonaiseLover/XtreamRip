@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchXtream, getCreds, clearCreds } from '../api/xtream';
-import { Play, LogOut, Clapperboard, Tv, Loader2, Zap } from 'lucide-react';
+import { Play, LogOut, Clapperboard, Tv, Loader2, Zap, Download, Settings as SettingsIcon } from 'lucide-react';
 
 type Category = { category_id: string; category_name: string };
 type MediaItem = {
@@ -126,6 +126,20 @@ export default function Browse() {
             placeholder="Search..."
             className="bg-black/40 border border-white/10 rounded-full px-4 py-1.5 text-sm outline-none focus:border-[#00f3ff]/40 text-white placeholder-gray-600 w-48 transition-all focus:w-64"
           />
+          <button
+            onClick={() => navigate('/downloads')}
+            className="text-gray-400 hover:text-[#00f3ff] transition-colors p-2 rounded-full hover:bg-[#00f3ff]/10"
+            title="Downloads"
+          >
+            <Download size={18} />
+          </button>
+          <button
+            onClick={() => navigate('/settings')}
+            className="text-gray-400 hover:text-[#bc13fe] transition-colors p-2 rounded-full hover:bg-[#bc13fe]/10"
+            title="Settings"
+          >
+            <SettingsIcon size={18} />
+          </button>
           <button
             onClick={handleLogout}
             className="text-gray-400 hover:text-red-400 transition-colors p-2 rounded-full hover:bg-red-400/10"

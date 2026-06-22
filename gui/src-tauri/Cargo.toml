@@ -27,3 +27,4 @@ reqwest = { version = "0.11", features = ["stream"] }
 tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread"] }
 futures-util = "0.3.32"
 tauri-plugin-dialog = "2.7.1"
+dirs = "6.0.0"
