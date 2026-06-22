@@ -128,7 +128,7 @@ pip install -r requirements.txt
 ### 3. Run
 
 ```bash
-python iptv_dl.py
+python xtreamrip.py
 ```
 
 On first launch, you'll be prompted for your IPTV server URL, username, and password. Credentials are saved locally to `~/.config/xtreamrip/creds.json` and never asked again.
