@@ -44,7 +44,10 @@ DEFAULT_CFG = {
     "download_dir":  "",
     "skip_existing": True,
     "notify":        True,
+    "use_arabic_fix": False
 }
+
+ARABIC_FIX_ENABLED = False
 
 # ─── UI helpers ───────────────────────────────────────────────────────────────
 
@@ -79,12 +82,17 @@ CHECKBOX_HINT = "[dim]  SPACE = toggle selection   ENTER with nothing selected =
 
 def fix_arabic(text: str) -> str:
     """Reshape and reorder Arabic text so it displays correctly in LTR terminals."""
-    if not text:
+    if not text or not ARABIC_FIX_ENABLED:
         return text
     try:
         import arabic_reshaper
         from bidi.algorithm import get_display
-        reshaped = arabic_reshaper.reshape(text)
+        config = {
+            "support_ligatures": False,
+            "delete_harakat": True,
+        }
+        reshaper = arabic_reshaper.ArabicReshaper(configuration=config)
+        reshaped = reshaper.reshape(text)
         return get_display(reshaped)
     except ImportError:
         return text
@@ -196,6 +204,8 @@ def settings_menu(cfg: dict) -> dict:
         "skip_existing": ("Skip already-downloaded files?  (true / false)",
                           lambda x: x.strip().lower() == "true"),
         "notify":        ("Termux push notification when done?  (true / false)",
+                          lambda x: x.strip().lower() == "true"),
+        "use_arabic_fix":("Arabic terminal fix (turn ON if letters look backwards)  (true / false)",
                           lambda x: x.strip().lower() == "true"),
     }
     for key, (label, cast) in fields.items():
@@ -894,6 +904,10 @@ def main() -> None:
 
     # ── load config + credentials ──
     cfg     = load_cfg()
+    
+    global ARABIC_FIX_ENABLED
+    ARABIC_FIX_ENABLED = cfg.get("use_arabic_fix", False)
+    
     history = load_history()
     creds   = None if args.reset else load_creds()
 
