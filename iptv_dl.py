@@ -40,7 +40,6 @@ HISTORY_FILE = CONFIG_DIR / "history.json"
 
 DEFAULT_CFG = {
     "crf":           20,
-    "workers":       2,
     "download_dir":  "",
     "skip_existing": True,
     "notify":        True,
@@ -199,7 +198,6 @@ def settings_menu(cfg: dict) -> dict:
     console.print(Rule("[bold cyan]Settings[/]"))
     fields = {
         "crf":           ("H.265 CRF quality  (18 = best,  28 = smallest)", int),
-        "workers":       ("Concurrent downloads  (1–5)", int),
         "download_dir":  ("Download folder  (leave blank = current directory)", str),
         "skip_existing": ("Skip already-downloaded files?  (true / false)",
                           lambda x: x.strip().lower() == "true"),
@@ -528,7 +526,10 @@ def run_download_queue(
     """
     ffmpeg_ok  = has_ffmpeg() and enc_args is not None
     is_copy    = enc_args == ["-c:v", "copy", "-c:a", "copy"] if enc_args else False
-    workers    = cfg["workers"] if (ffmpeg_ok or is_copy) else 1
+    
+    # IPTV servers strictly ban multiple concurrent connections on single accounts
+    # Forced to 1 to prevent mass failures.
+    workers    = 1
 
     lock    = threading.Lock()
     done    = 0
